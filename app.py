@@ -120,9 +120,14 @@ def list_models():
         from dashscope import Models
         resp = Models.list(api_key=state['api_key'], page_size=50)
         if resp.status_code == 200:
-            data = resp.get('data', {}).get('model_list', []) or resp.get('data', {}).get('models', []) or resp.get('data', [])
-            models = [{'model_id': m.get('model_id', m.get('name')), 'name': m.get('name', m.get('model_id'))} for m in data]
-            return jsonify({'models': models})
+            output = resp.output or {}
+            if isinstance(output, dict):
+                models_raw = output.get('models', output.get('model_list', output.get('data', [])))
+            else:
+                models_raw = output if isinstance(output, list) else []
+            if models_raw:
+                models = [{'model_id': m.get('model_id', m.get('name')), 'name': m.get('name', m.get('model_id'))} for m in models_raw]
+                return jsonify({'models': models})
     except Exception:
         pass
     # Fallback: return known models with pricing
@@ -130,6 +135,8 @@ def list_models():
         {'model_id': 'qwen-max', 'name': 'Qwen-Max (¥20-60/百万token)'},
         {'model_id': 'qwen-plus', 'name': 'Qwen-Plus (¥2-6/百万token)'},
         {'model_id': 'qwen-turbo', 'name': 'Qwen-Turbo (¥0.8-2/百万token)'},
+        {'model_id': 'deepseek-v3', 'name': 'DeepSeek-V3 (¥2-8/百万token)'},
+        {'model_id': 'deepseek-r1', 'name': 'DeepSeek-R1 (¥4-16/百万token)'},
     ]
     return jsonify({'models': fallback, 'fallback': True})
 
