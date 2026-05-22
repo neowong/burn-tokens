@@ -26,19 +26,21 @@ state = {
     'stop_event': None,
 }
 
-# Model pricing per 1M tokens (CNY)
+# Model pricing per 1M tokens (CNY) — updated 2026-05
+# Sources:
+#   Bailian: https://www.alibabacloud.com/help/zh/model-studio/model-pricing
+#   DeepSeek: https://api-docs.deepseek.com/zh-cn/quick_start/pricing
 MODEL_PRICES = {
-    # Bailian
-    'qwen-max': {'input': 20.0, 'output': 60.0},
-    'qwen-plus': {'input': 2.0, 'output': 6.0},
-    'qwen-turbo': {'input': 0.8, 'output': 2.0},
-    # DeepSeek (Bailian hosted)
-    'deepseek-v3': {'input': 2.0, 'output': 8.0},
-    'deepseek-r1': {'input': 4.0, 'output': 16.0},
-    # DeepSeek official (OpenAI-compatible)
-    'deepseek-chat': {'input': 2.0, 'output': 8.0},
-    'deepseek-reasoner': {'input': 4.0, 'output': 16.0},
-    # DeepSeek V4 (2026 pricing, cache miss)
+    # Bailian Qwen (中国内地, 非Batch)
+    'qwen-max': {'input': 2.4, 'output': 9.6},
+    'qwen-plus': {'input': 0.8, 'output': 2.0},
+    'qwen-turbo': {'input': 0.367, 'output': 1.468},
+    # DeepSeek legacy names (映射到V4)
+    'deepseek-v3': {'input': 1.0, 'output': 2.0},
+    'deepseek-r1': {'input': 2.0, 'output': 4.0},
+    'deepseek-chat': {'input': 1.0, 'output': 2.0},
+    'deepseek-reasoner': {'input': 2.0, 'output': 4.0},
+    # DeepSeek V4 (2026, 缓存未命中)
     'deepseek-v4-flash': {'input': 1.0, 'output': 2.0},
     'deepseek-v4-pro': {'input': 3.0, 'output': 6.0},
 }
@@ -149,7 +151,7 @@ def list_models():
         # Fallback for DeepSeek
         fallback = [
             {'model_id': 'deepseek-v4-flash', 'name': 'DeepSeek-V4 Flash (¥1-2/百万token)'},
-            {'model_id': 'deepseek-v4-pro', 'name': 'DeepSeek-V4 Pro (¥3-6/百万token)'},
+            {'model_id': 'deepseek-v4-pro', 'name': 'DeepSeek-V4 Pro (¥3-6/百万token, 限时2.5折)'},
         ]
         return jsonify({'models': fallback, 'fallback': True})
 
@@ -169,11 +171,11 @@ def list_models():
     except Exception:
         pass
     fallback = [
-        {'model_id': 'qwen-max', 'name': 'Qwen-Max (¥20-60/百万token)'},
-        {'model_id': 'qwen-plus', 'name': 'Qwen-Plus (¥2-6/百万token)'},
-        {'model_id': 'qwen-turbo', 'name': 'Qwen-Turbo (¥0.8-2/百万token)'},
-        {'model_id': 'deepseek-v3', 'name': 'DeepSeek-V3 (¥2-8/百万token)'},
-        {'model_id': 'deepseek-r1', 'name': 'DeepSeek-R1 (¥4-16/百万token)'},
+        {'model_id': 'qwen-max', 'name': 'Qwen-Max (¥2.4-9.6/百万token)'},
+        {'model_id': 'qwen-plus', 'name': 'Qwen-Plus (¥0.8-2/百万token)'},
+        {'model_id': 'qwen-turbo', 'name': 'Qwen-Turbo (¥0.37-1.47/百万token)'},
+        {'model_id': 'deepseek-v3', 'name': 'DeepSeek-V3 (¥1-2/百万token)'},
+        {'model_id': 'deepseek-r1', 'name': 'DeepSeek-R1 (¥2-4/百万token)'},
     ]
     return jsonify({'models': fallback, 'fallback': True})
 
