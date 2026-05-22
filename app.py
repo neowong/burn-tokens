@@ -117,18 +117,21 @@ def list_models():
     if not state['api_key']:
         return jsonify({'error': 'API Key not set'}), 400
     try:
-        from dashscope import Generation
-        models = Generation.list_models(api_key=state['api_key'])
-        result = [m for m in models if m.get('model_id') and 'qwen' in m.get('model_id', '').lower() or 'deepseek' in m.get('model_id', '').lower()]
-        return jsonify({'models': result})
-    except Exception as e:
-        # Fallback: return known models with pricing
-        fallback = [
-            {'model_id': 'qwen-max', 'name': 'Qwen-Max (¥20-60/百万token)'},
-            {'model_id': 'qwen-plus', 'name': 'Qwen-Plus (¥2-6/百万token)'},
-            {'model_id': 'qwen-turbo', 'name': 'Qwen-Turbo (¥0.8-2/百万token)'},
-        ]
-        return jsonify({'models': fallback, 'fallback': True, 'error': str(e)})
+        from dashscope import Models
+        resp = Models.list(api_key=state['api_key'], page_size=50)
+        if resp.status_code == 200:
+            data = resp.get('data', {}).get('model_list', []) or resp.get('data', {}).get('models', []) or resp.get('data', [])
+            models = [{'model_id': m.get('model_id', m.get('name')), 'name': m.get('name', m.get('model_id'))} for m in data]
+            return jsonify({'models': models})
+    except Exception:
+        pass
+    # Fallback: return known models with pricing
+    fallback = [
+        {'model_id': 'qwen-max', 'name': 'Qwen-Max (¥20-60/百万token)'},
+        {'model_id': 'qwen-plus', 'name': 'Qwen-Plus (¥2-6/百万token)'},
+        {'model_id': 'qwen-turbo', 'name': 'Qwen-Turbo (¥0.8-2/百万token)'},
+    ]
+    return jsonify({'models': fallback, 'fallback': True})
 
 
 @app.route('/api/status')
