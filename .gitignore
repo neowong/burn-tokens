@@ -2,3 +2,4 @@ burner.db
 __pycache__/
 *.pyc
 .superpowers/
+.playwright-mcp/
