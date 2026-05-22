@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Burner</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0e0; min-height: 100vh; }
+        .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { font-size: 24px; margin-bottom: 20px; color: #fff; }
+        .card { background: #1a1a2e; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid #2a2a3e; }
+        .card-title { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .stat { text-align: center; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #fff; }
+        .stat-label { font-size: 11px; color: #888; margin-top: 4px; }
+        .stat-value.green { color: #4ade80; }
+        .stat-value.orange { color: #f97316; }
+        .stat-value.red { color: #ef4444; }
+        .stat-value.blue { color: #60a5fa; }
+        .progress-bar { height: 10px; background: #2a2a3e; border-radius: 5px; overflow: hidden; margin-top: 8px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #f97316, #ef4444); border-radius: 5px; transition: width 1s ease; }
+        .form-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: end; }
+        .form-group { flex: 1; }
+        .form-group label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+        .form-group input, .form-group select { width: 100%; padding: 8px 12px; background: #2a2a3e; border: 1px solid #3a3a4e; border-radius: 6px; color: #fff; font-size: 14px; }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #60a5fa; }
+        .btn { padding: 10px 24px; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: #3b82f6; color: #fff; }
+        .btn-success { background: #22c55e; color: #fff; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-secondary { background: #4b5563; color: #fff; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        #chart-canvas { width: 100% !important; height: 250px !important; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .status-badge.running { background: #166534; color: #4ade80; }
+        .status-badge.stopped { background: #451a1a; color: #f87171; }
+        .status-badge.done { background: #1e3a1e; color: #4ade80; }
+        .hidden { display: none; }
+        #error-msg { background: #451a1a; color: #fca5a5; padding: 8px 16px; border-radius: 6px; margin-bottom: 12px; }
+        .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Token Burner</h1>
+        <div id="error-msg" class="hidden"></div>
+
+        <!-- Config -->
+        <div class="card">
+            <div class="card-title">配置</div>
+            <div class="form-row">
+                <div class="form-group" style="flex: 3;">
+                    <label>百炼 API Key</label>
+                    <input type="password" id="api-key" placeholder="sk-...">
+                </div>
+                <button class="btn btn-secondary" onclick="fetchModels()" style="margin-bottom: 0;">获取模型列表</button>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>模型</label>
+                    <select id="model">
+                        <option value="qwen-max">Qwen-Max (¥20-60/百万token)</option>
+                        <option value="qwen-plus">Qwen-Plus (¥2-6/百万token)</option>
+                        <option value="qwen-turbo">Qwen-Turbo (¥0.8-2/百万token)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>并发数</label>
+                    <input type="number" id="concurrency" value="10" min="1" max="200">
+                </div>
+                <div class="form-group">
+                    <label>目标金额 (¥)</label>
+                    <input type="number" id="target-amount" value="2000" min="1" step="100">
+                </div>
+            </div>
+            <button class="btn btn-success" id="btn-start" onclick="startBurn()">🔥 开始烧钱</button>
+            <button class="btn btn-danger hidden" id="btn-stop" onclick="stopBurn()">⏹ 停止</button>
+        </div>
+
+        <!-- Stats -->
+        <div class="card">
+            <div class="card-title">实时状态 <span id="status-badge" class="status-badge stopped">已停止</span></div>
+            <div class="stats" id="stats">
+                <div class="stat"><div class="stat-value orange" id="cost-display">¥0.00</div><div class="stat-label">已消耗</div></div>
+                <div class="stat"><div class="stat-value blue" id="tokens-display">0</div><div class="stat-label">总 Token</div></div>
+                <div class="stat"><div class="stat-value green" id="rate-display">0/min</div><div class="stat-label">消耗速率</div></div>
+                <div class="stat"><div class="stat-value" id="uptime-display">00:00:00</div><div class="stat-label">运行时间</div></div>
+            </div>
+            <div style="margin-top: 12px;">
+                <div style="display: flex; justify-content: space-between; font-size: 12px; color: #888;">
+                    <span id="progress-text">¥0.00 / ¥2000</span>
+                    <span id="progress-pct">0%</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width: 0%;"></div></div>
+            </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="card">
+            <div class="card-title">消耗趋势 (近24小时)</div>
+            <canvas id="chart-canvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+        const BASE = '';
+
+        function showError(msg) {
+            const el = document.getElementById('error-msg');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+        }
+
+        function hideError() { document.getElementById('error-msg').classList.add('hidden'); }
+
+        async function api(path, opts = {}) {
+            const res = await fetch(BASE + path, opts);
+            return res.json();
+        }
+
+        async function fetchModels() {
+            const key = document.getElementById('api-key').value;
+            if (!key) { showError('请先输入 API Key'); return; }
+            await api('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({api_key: key}) });
+            const data = await api('/api/models');
+            const sel = document.getElementById('model');
+            if (data.models && data.models.length) {
+                sel.innerHTML = data.models.map(m => `<option value="${m.model_id}">${m.name || m.model_id}</option>`).join('');
+                hideError();
+            } else {
+                showError('获取模型列表失败: ' + (data.error || 'unknown error'));
+            }
+        }
+
+        async function startBurn() {
+            const key = document.getElementById('api-key').value;
+            const model = document.getElementById('model').value;
+            const concurrency = document.getElementById('concurrency').value;
+            const target = document.getElementById('target-amount').value;
+            hideError();
+            await api('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({api_key: key, model, concurrency: parseInt(concurrency), target_amount: parseFloat(target)}) });
+            const data = await api('/api/start', { method: 'POST' });
+            if (data.status === 'ok') {
+                document.getElementById('btn-start').classList.add('hidden');
+                document.getElementById('btn-stop').classList.remove('hidden');
+            } else {
+                showError(data.error || '启动失败');
+            }
+        }
+
+        async function stopBurn() {
+            await api('/api/stop', { method: 'POST' });
+            document.getElementById('btn-start').classList.remove('hidden');
+            document.getElementById('btn-stop').classList.add('hidden');
+        }
+
+        function formatNumber(n) {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toString();
+        }
+
+        // SSE listener
+        function connectSSE() {
+            const evtSource = new EventSource(BASE + '/api/events');
+            evtSource.onmessage = (e) => {
+                const d = JSON.parse(e.data);
+                document.getElementById('cost-display').textContent = '¥' + d.total_cost.toFixed(2);
+                document.getElementById('tokens-display').textContent = formatNumber(d.total_tokens);
+                document.getElementById('rate-display').textContent = d.rate_per_min + '/min';
+                document.getElementById('uptime-display').textContent = d.uptime_str;
+                document.getElementById('progress-text').textContent = '¥' + d.total_cost.toFixed(2) + ' / ¥' + d.target_amount.toFixed(0);
+                document.getElementById('progress-pct').textContent = d.progress_pct + '%';
+                document.getElementById('progress-fill').style.width = d.progress_pct + '%';
+                const badge = document.getElementById('status-badge');
+                if (d.running) { badge.textContent = '运行中'; badge.className = 'status-badge running'; }
+                else if (d.done) { badge.textContent = '已完成'; badge.className = 'status-badge done'; }
+                else { badge.textContent = '已停止'; badge.className = 'status-badge stopped'; }
+
+                if (d.done) {
+                    document.getElementById('btn-start').classList.remove('hidden');
+                    document.getElementById('btn-stop').classList.add('hidden');
+                }
+
+                // Update chart
+                if (chart && d.history) {
+                    chart.data.labels = d.history.map(h => h.t);
+                    chart.data.datasets[0].data = d.history.map(h => h.tokens);
+                    chart.data.datasets[1].data = d.history.map(h => h.cost);
+                    chart.update('none');
+                }
+            };
+        }
+
+        async function initChart() {
+            const ctx = document.getElementById('chart-canvas').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: [
+                    { label: 'Token', data: [], borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.1)', yAxisID: 'y', fill: true, tension: 0.3 },
+                    { label: '费用 ¥', data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.1)', yAxisID: 'y1', fill: true, tension: 0.3 }
+                ]},
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { labels: { color: '#888', font: { size: 11 } } } },
+                    scales: {
+                        x: { ticks: { color: '#666', maxTicksLimit: 12, font: { size: 10 } }, grid: { color: '#2a2a3e' } },
+                        y: { position: 'left', ticks: { color: '#60a5fa', font: { size: 10 } }, grid: { color: '#2a2a3e' }, title: { display: true, text: 'Token', color: '#60a5fa' } },
+                        y1: { position: 'right', ticks: { color: '#f97316', font: { size: 10 } }, grid: { display: false }, title: { display: true, text: '费用 ¥', color: '#f97316' } }
+                    }
+                }
+            });
+        }
+
+        // Load saved config on page load
+        async function loadStatus() {
+            const s = await api('/api/status');
+            if (!s.error) {
+                document.getElementById('cost-display').textContent = '¥' + (s.total_cost || 0).toFixed(2);
+                document.getElementById('tokens-display').textContent = formatNumber(s.total_tokens || 0);
+                document.getElementById('progress-text').textContent = '¥' + (s.total_cost || 0).toFixed(2) + ' / ¥' + (s.target_amount || 2000).toFixed(0);
+                document.getElementById('progress-pct').textContent = (s.progress_pct || 0) + '%';
+                document.getElementById('progress-fill').style.width = (s.progress_pct || 0) + '%';
+                document.getElementById('concurrency').value = s.concurrency || 10;
+                // Set model select
+                if (s.model) document.getElementById('model').value = s.model;
+                if (s.running) {
+                    document.getElementById('btn-start').classList.add('hidden');
+                    document.getElementById('btn-stop').classList.remove('hidden');
+                }
+            }
+        }
+
+        initChart();
+        loadStatus();
+        connectSSE();
+    </script>
+</body>
+</html>
