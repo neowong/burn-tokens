@@ -177,40 +177,51 @@ def burner_worker():
     def send_request():
         if stop_event.is_set():
             return
-        try:
-            dashscope.api_key = state['api_key']
-            resp = Generation.call(
-                model=state['model'],
-                prompt=LONG_PROMPT,
-                max_tokens=4096,
-                temperature=0.9,
-                result_format='message'
-            )
+        max_retries = 3
+        for attempt in range(max_retries):
             if stop_event.is_set():
                 return
-            if resp.status_code == 200:
-                usage = resp.get('usage', {})
-                prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
-                output_tokens = usage.get('output_tokens', 0)
-                total_tokens = prompt_tokens + output_tokens
-                cost = calc_cost(state['model'], prompt_tokens, output_tokens)
-
-                conn = get_db()
-                conn.execute(
-                    'INSERT INTO burn_records (model, prompt_tokens, output_tokens, total_tokens, cost) VALUES (?, ?, ?, ?, ?)',
-                    (state['model'], prompt_tokens, output_tokens, total_tokens, cost)
+            try:
+                dashscope.api_key = state['api_key']
+                resp = Generation.call(
+                    model=state['model'],
+                    prompt=LONG_PROMPT,
+                    max_tokens=4096,
+                    temperature=0.9,
+                    result_format='message'
                 )
-                conn.commit()
-                conn.close()
+                if stop_event.is_set():
+                    return
+                if resp.status_code == 200:
+                    usage = resp.get('usage', {})
+                    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
+                    output_tokens = usage.get('output_tokens', 0)
+                    total_tokens = prompt_tokens + output_tokens
+                    cost = calc_cost(state['model'], prompt_tokens, output_tokens)
 
-                state['total_tokens'] += total_tokens
-                state['total_cost'] += cost
-                save_config_key('total_tokens', state['total_tokens'])
-                save_config_key('total_cost', state['total_cost'])
-            else:
-                time.sleep(1)
-        except Exception:
-            time.sleep(1)
+                    conn = get_db()
+                    conn.execute(
+                        'INSERT INTO burn_records (model, prompt_tokens, output_tokens, total_tokens, cost) VALUES (?, ?, ?, ?, ?)',
+                        (state['model'], prompt_tokens, output_tokens, total_tokens, cost)
+                    )
+                    conn.commit()
+                    conn.close()
+
+                    state['total_tokens'] += total_tokens
+                    state['total_cost'] += cost
+                    save_config_key('total_tokens', state['total_tokens'])
+                    save_config_key('total_cost', state['total_cost'])
+                    return  # Success - exit retry loop
+                elif resp.status_code in (429, 503):
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                else:
+                    time.sleep(1)
+                    return  # Non-retryable error
+            except Exception:
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                else:
+                    time.sleep(1)
 
     try:
         while not stop_event.is_set():
