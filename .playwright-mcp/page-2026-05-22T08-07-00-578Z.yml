@@ -1,0 +1,44 @@
+- generic [ref=e2]:
+  - heading "🔥 Token Burner" [level=1] [ref=e3]
+  - generic [ref=e4]:
+    - generic [ref=e5]: 配置
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]: 百炼 API Key
+        - textbox "sk-..." [ref=e9]
+      - button "获取模型列表" [ref=e10] [cursor=pointer]
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]: 模型
+        - combobox [ref=e14]:
+          - option "Qwen-Max (¥20-60/百万token)" [selected]
+          - option "Qwen-Plus (¥2-6/百万token)"
+          - option "Qwen-Turbo (¥0.8-2/百万token)"
+      - generic [ref=e15]:
+        - generic [ref=e16]: 并发数
+        - spinbutton [ref=e17]: "10"
+      - generic [ref=e18]:
+        - generic [ref=e19]: 目标金额 (¥)
+        - spinbutton [ref=e20]: "2000"
+    - button "🔥 开始烧钱" [ref=e21] [cursor=pointer]
+  - generic [ref=e22]:
+    - generic [ref=e23]:
+      - text: 实时状态
+      - generic [ref=e24]: 已停止
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]: ¥0.00
+        - generic [ref=e28]: 已消耗
+      - generic [ref=e29]:
+        - generic [ref=e30]: "0"
+        - generic [ref=e31]: 总 Token
+      - generic [ref=e32]:
+        - generic [ref=e33]: 0/min
+        - generic [ref=e34]: 消耗速率
+      - generic [ref=e35]:
+        - generic [ref=e36]: 00:00:00
+        - generic [ref=e37]: 运行时间
+    - generic [ref=e39]:
+      - generic [ref=e40]: ¥0.00 / ¥2000
+      - generic [ref=e41]: 0%
+  - generic [ref=e44]: 消耗趋势 (近24小时)
