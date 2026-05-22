@@ -164,6 +164,9 @@
             if (data.status === 'ok') {
                 document.getElementById('btn-start').classList.add('hidden');
                 document.getElementById('btn-stop').classList.remove('hidden');
+                const badge = document.getElementById('status-badge');
+                badge.textContent = '正在启动...';
+                badge.className = 'status-badge running';
             } else {
                 showError(data.error || '启动失败');
             }
@@ -194,7 +197,14 @@
                 document.getElementById('progress-pct').textContent = d.progress_pct + '%';
                 document.getElementById('progress-fill').style.width = d.progress_pct + '%';
                 const badge = document.getElementById('status-badge');
-                if (d.running) { badge.textContent = '运行中'; badge.className = 'status-badge running'; }
+                if (d.running) {
+                    if (d.total_tokens === 0) {
+                        badge.textContent = '等待响应...';
+                    } else {
+                        badge.textContent = '运行中';
+                    }
+                    badge.className = 'status-badge running';
+                }
                 else if (d.done) { badge.textContent = '已完成'; badge.className = 'status-badge done'; }
                 else { badge.textContent = '已停止'; badge.className = 'status-badge stopped'; }
 
