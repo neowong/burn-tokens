@@ -5,8 +5,7 @@ import time
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, Response, render_template
 import random
-import dashscope
-from dashscope import Generation
+import requests
 
 app = Flask(__name__)
 
@@ -15,6 +14,7 @@ DB_PATH = 'burner.db'
 # In-memory state
 state = {
     'api_key': None,
+    'provider': 'bailian',
     'model': 'qwen-max',
     'target_amount': 2000.0,
     'concurrency': 10,
@@ -70,6 +70,8 @@ def load_config():
     for row in rows:
         if row['key'] == 'api_key':
             state['api_key'] = row['value']
+        elif row['key'] == 'provider':
+            state['provider'] = row['value']
         elif row['key'] == 'model':
             state['model'] = row['value']
         elif row['key'] == 'target_amount':
@@ -100,6 +102,9 @@ def set_config():
     if 'api_key' in data:
         state['api_key'] = data['api_key']
         save_config_key('api_key', data['api_key'])
+    if 'provider' in data:
+        state['provider'] = data['provider']
+        save_config_key('provider', data['provider'])
     if 'model' in data:
         state['model'] = data['model']
         save_config_key('model', data['model'])
@@ -116,6 +121,31 @@ def set_config():
 def list_models():
     if not state['api_key']:
         return jsonify({'error': 'API Key not set'}), 400
+
+    provider = state['provider']
+
+    if provider == 'deepseek':
+        try:
+            resp = requests.get(
+                'https://api.deepseek.com/v1/models',
+                headers={'Authorization': f'Bearer {state["api_key"]}'},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                data = resp.json().get('data', [])
+                models = [{'model_id': m['id'], 'name': m['id']} for m in data if 'deepseek' in m['id'].lower()]
+                if models:
+                    return jsonify({'models': models})
+        except Exception:
+            pass
+        # Fallback for DeepSeek
+        fallback = [
+            {'model_id': 'deepseek-chat', 'name': 'DeepSeek-V3 (¥2-8/百万token)'},
+            {'model_id': 'deepseek-reasoner', 'name': 'DeepSeek-R1 (¥4-16/百万token)'},
+        ]
+        return jsonify({'models': fallback, 'fallback': True})
+
+    # Bailian provider
     try:
         from dashscope import Models
         resp = Models.list(api_key=state['api_key'], page_size=50)
@@ -130,7 +160,6 @@ def list_models():
                 return jsonify({'models': models})
     except Exception:
         pass
-    # Fallback: return known models with pricing
     fallback = [
         {'model_id': 'qwen-max', 'name': 'Qwen-Max (¥20-60/百万token)'},
         {'model_id': 'qwen-plus', 'name': 'Qwen-Plus (¥2-6/百万token)'},
@@ -145,6 +174,7 @@ def list_models():
 def get_status():
     return jsonify({
         'running': state['running'],
+        'provider': state['provider'],
         'model': state['model'],
         'total_tokens': state['total_tokens'],
         'total_cost': round(state['total_cost'], 4),
@@ -177,8 +207,64 @@ def calc_cost(model, prompt_tokens, output_tokens):
     return input_cost + output_cost
 
 
+def call_bailian(api_key, model):
+    """Call Bailian (DashScope) API. Returns (prompt_tokens, output_tokens) or None."""
+    import dashscope
+    from dashscope import Generation
+    dashscope.api_key = api_key
+    resp = Generation.call(
+        model=model,
+        prompt=LONG_PROMPT,
+        max_tokens=4096,
+        temperature=0.9,
+        result_format='message'
+    )
+    if resp.status_code == 200:
+        usage = resp.get('usage', {})
+        prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
+        output_tokens = usage.get('output_tokens', 0)
+        return prompt_tokens, output_tokens
+    elif resp.status_code in (429, 503):
+        raise Exception('retryable')
+    return None
+
+
+def call_deepseek(api_key, model):
+    """Call DeepSeek (OpenAI-compatible) API. Returns (prompt_tokens, output_tokens) or None."""
+    resp = requests.post(
+        'https://api.deepseek.com/v1/chat/completions',
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        },
+        json={
+            'model': model,
+            'messages': [{'role': 'user', 'content': LONG_PROMPT}],
+            'max_tokens': 4096,
+            'temperature': 0.9,
+        },
+        timeout=60
+    )
+    if resp.status_code == 200:
+        data = resp.json()
+        usage = data.get('usage', {})
+        prompt_tokens = usage.get('prompt_tokens', 0)
+        output_tokens = usage.get('completion_tokens', 0)
+        return prompt_tokens, output_tokens
+    elif resp.status_code in (429, 503):
+        raise Exception('retryable')
+    return None
+
+
+def api_call(api_key, provider, model):
+    """Dispatch API call to the correct provider."""
+    if provider == 'deepseek':
+        return call_deepseek(api_key, model)
+    return call_bailian(api_key, model)
+
+
 def burner_worker():
-    """Background thread that sends concurrent requests to Bailian API."""
+    """Background thread that sends concurrent requests to the configured API."""
     stop_event = threading.Event()
     state['stop_event'] = stop_event
     state['running'] = True
@@ -192,20 +278,11 @@ def burner_worker():
             if stop_event.is_set():
                 return
             try:
-                dashscope.api_key = state['api_key']
-                resp = Generation.call(
-                    model=state['model'],
-                    prompt=LONG_PROMPT,
-                    max_tokens=4096,
-                    temperature=0.9,
-                    result_format='message'
-                )
+                result = api_call(state['api_key'], state['provider'], state['model'])
                 if stop_event.is_set():
                     return
-                if resp.status_code == 200:
-                    usage = resp.get('usage', {})
-                    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
-                    output_tokens = usage.get('output_tokens', 0)
+                if result:
+                    prompt_tokens, output_tokens = result
                     total_tokens = prompt_tokens + output_tokens
                     cost = calc_cost(state['model'], prompt_tokens, output_tokens)
 
@@ -221,23 +298,24 @@ def burner_worker():
                     state['total_cost'] += cost
                     save_config_key('total_tokens', state['total_tokens'])
                     save_config_key('total_cost', state['total_cost'])
-                    return  # Success - exit retry loop
-                elif resp.status_code in (429, 503):
-                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                    return
                 else:
                     time.sleep(1)
-                    return  # Non-retryable error
-            except Exception:
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                    return
+            except Exception as e:
+                msg = str(e)
+                if 'retryable' in msg and attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
                 else:
-                    time.sleep(1)
+                    if attempt < max_retries - 1:
+                        time.sleep(2 ** attempt)
+                    else:
+                        time.sleep(1)
 
     try:
         while not stop_event.is_set():
             if state['total_cost'] >= state['target_amount']:
                 break
-            # Check target every iteration
             threads = []
             for _ in range(state['concurrency']):
                 if stop_event.is_set() or state['total_cost'] >= state['target_amount']:
@@ -245,7 +323,7 @@ def burner_worker():
                 t = threading.Thread(target=send_request)
                 t.start()
                 threads.append(t)
-                time.sleep(0.05)  # Small stagger to avoid thundering herd
+                time.sleep(0.05)
             for t in threads:
                 t.join(timeout=30)
     finally:

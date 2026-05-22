@@ -53,8 +53,15 @@
         <div class="card">
             <div class="card-title">配置</div>
             <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label>API 提供商</label>
+                    <select id="provider" onchange="onProviderChange()">
+                        <option value="bailian">阿里百炼 (DashScope)</option>
+                        <option value="deepseek">DeepSeek (OpenAI兼容)</option>
+                    </select>
+                </div>
                 <div class="form-group" style="flex: 3;">
-                    <label>百炼 API Key</label>
+                    <label>API Key</label>
                     <input type="password" id="api-key" placeholder="sk-...">
                 </div>
                 <button class="btn btn-secondary" onclick="fetchModels()" style="margin-bottom: 0;">获取模型列表</button>
@@ -126,7 +133,8 @@
         async function fetchModels() {
             const key = document.getElementById('api-key').value;
             if (!key) { showError('请先输入 API Key'); return; }
-            await api('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({api_key: key}) });
+            const provider = document.getElementById('provider').value;
+            await api('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({api_key: key, provider}) });
             const data = await api('/api/models');
             const sel = document.getElementById('model');
             if (data.models && data.models.length) {
@@ -137,13 +145,22 @@
             }
         }
 
+        function onProviderChange() {
+            // Reset model list when switching provider
+            const p = document.getElementById('provider').value;
+            document.getElementById('model').innerHTML = p === 'deepseek'
+                ? '<option value="deepseek-chat">DeepSeek-V3</option><option value="deepseek-reasoner">DeepSeek-R1</option>'
+                : '<option value="qwen-max">Qwen-Max (¥20-60/百万token)</option><option value="qwen-plus">Qwen-Plus (¥2-6/百万token)</option><option value="qwen-turbo">Qwen-Turbo (¥0.8-2/百万token)</option>';
+        }
+
         async function startBurn() {
             const key = document.getElementById('api-key').value;
+            const provider = document.getElementById('provider').value;
             const model = document.getElementById('model').value;
             const concurrency = document.getElementById('concurrency').value;
             const target = document.getElementById('target-amount').value;
             hideError();
-            await api('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({api_key: key, model, concurrency: parseInt(concurrency), target_amount: parseFloat(target)}) });
+            await api('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({api_key: key, provider, model, concurrency: parseInt(concurrency), target_amount: parseFloat(target)}) });
             const data = await api('/api/start', { method: 'POST' });
             if (data.status === 'ok') {
                 document.getElementById('btn-start').classList.add('hidden');
@@ -228,7 +245,11 @@
                 document.getElementById('progress-pct').textContent = (s.progress_pct || 0) + '%';
                 document.getElementById('progress-fill').style.width = (s.progress_pct || 0) + '%';
                 document.getElementById('concurrency').value = s.concurrency || 10;
-                // Set model select
+                // Set provider and model
+                if (s.provider) {
+                    document.getElementById('provider').value = s.provider;
+                    onProviderChange();
+                }
                 if (s.model) document.getElementById('model').value = s.model;
                 if (s.running) {
                     document.getElementById('btn-start').classList.add('hidden');
