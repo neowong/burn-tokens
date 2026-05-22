@@ -261,6 +261,89 @@ def stop_burn():
     return jsonify({'status': 'ok'})
 
 
+@app.route('/api/events')
+def event_stream():
+    def generate():
+        last_cost = 0
+        last_tokens = 0
+        rate_window = []  # [(timestamp, tokens), ...]
+        while True:
+            running = state['running']
+            total_cost = state['total_cost']
+            total_tokens = state['total_tokens']
+            target = state['target_amount']
+            done = not running and total_cost >= target if not running else False
+
+            # Calculate rate from recent history
+            now = time.time()
+            rate_window.append((now, total_tokens))
+            # Keep last 60 seconds
+            rate_window = [(t, tok) for t, tok in rate_window if now - t < 60]
+            if len(rate_window) > 1:
+                dt = rate_window[-1][0] - rate_window[0][0]
+                dtok = rate_window[-1][1] - rate_window[0][1]
+                rate = int(dtok / (dt / 60)) if dt > 0 else 0
+            else:
+                rate = 0
+
+            # Uptime
+            uptime = int(now - state['start_time'].timestamp()) if state['start_time'] else 0
+            uptime_str = f"{uptime // 3600:02d}:{(uptime % 3600) // 60:02d}:{uptime % 60:02d}"
+
+            # History for chart (last 24h, aggregated by hour)
+            conn = get_db()
+            rows = conn.execute('''
+                SELECT strftime('%H:00', created_at) as hour,
+                       SUM(total_tokens) as tokens,
+                       SUM(cost) as cost
+                FROM burn_records
+                WHERE created_at > datetime('now', '-24 hours')
+                GROUP BY strftime('%H', created_at)
+                ORDER BY hour
+            ''').fetchall()
+            conn.close()
+            history = [{'t': r['hour'], 'tokens': r['tokens'], 'cost': round(r['cost'], 4)} for r in rows]
+
+            data = {
+                'running': running,
+                'done': done,
+                'total_cost': round(total_cost, 4),
+                'total_tokens': total_tokens,
+                'target_amount': target,
+                'progress_pct': round(min(total_cost / target * 100, 100), 1) if target > 0 else 0,
+                'rate_per_min': rate,
+                'uptime_str': uptime_str,
+                'history': history,
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+
+            last_cost = total_cost
+            last_tokens = total_tokens
+            time.sleep(1)
+
+    return Response(generate(), mimetype='text/event-stream', headers={
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+    })
+
+
+@app.route('/api/history')
+def get_history():
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT strftime('%H:00', created_at) as hour,
+               SUM(total_tokens) as tokens,
+               SUM(cost) as cost
+        FROM burn_records
+        WHERE created_at > datetime('now', '-24 hours')
+        GROUP BY strftime('%H', created_at)
+        ORDER BY hour
+    ''').fetchall()
+    conn.close()
+    return jsonify([{'t': r['hour'], 'tokens': r['tokens'], 'cost': round(r['cost'], 4)} for r in rows])
+
+
 if __name__ == '__main__':
     init_db()
     load_config()
