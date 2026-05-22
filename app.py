@@ -28,11 +28,19 @@ state = {
 
 # Model pricing per 1M tokens (CNY)
 MODEL_PRICES = {
+    # Bailian
     'qwen-max': {'input': 20.0, 'output': 60.0},
     'qwen-plus': {'input': 2.0, 'output': 6.0},
     'qwen-turbo': {'input': 0.8, 'output': 2.0},
+    # DeepSeek (Bailian hosted)
     'deepseek-v3': {'input': 2.0, 'output': 8.0},
     'deepseek-r1': {'input': 4.0, 'output': 16.0},
+    # DeepSeek official (OpenAI-compatible)
+    'deepseek-chat': {'input': 2.0, 'output': 8.0},
+    'deepseek-reasoner': {'input': 4.0, 'output': 16.0},
+    # DeepSeek V4 (2026 pricing, cache miss)
+    'deepseek-v4-flash': {'input': 1.0, 'output': 2.0},
+    'deepseek-v4-pro': {'input': 3.0, 'output': 6.0},
 }
 
 
@@ -140,8 +148,8 @@ def list_models():
             pass
         # Fallback for DeepSeek
         fallback = [
-            {'model_id': 'deepseek-chat', 'name': 'DeepSeek-V3 (¥2-8/百万token)'},
-            {'model_id': 'deepseek-reasoner', 'name': 'DeepSeek-R1 (¥4-16/百万token)'},
+            {'model_id': 'deepseek-v4-flash', 'name': 'DeepSeek-V4 Flash (¥1-2/百万token)'},
+            {'model_id': 'deepseek-v4-pro', 'name': 'DeepSeek-V4 Pro (¥3-6/百万token)'},
         ]
         return jsonify({'models': fallback, 'fallback': True})
 
@@ -201,7 +209,14 @@ LONG_PROMPT = """请详细分析以下内容，从多个角度进行深入探讨
 
 
 def calc_cost(model, prompt_tokens, output_tokens):
-    prices = MODEL_PRICES.get(model, MODEL_PRICES['qwen-max'])
+    prices = MODEL_PRICES.get(model)
+    if not prices:
+        if 'deepseek' in model.lower():
+            prices = MODEL_PRICES['deepseek-chat']
+        elif 'qwen' in model.lower():
+            prices = MODEL_PRICES['qwen-max']
+        else:
+            prices = MODEL_PRICES['qwen-max']
     input_cost = prompt_tokens * prices['input'] / 1_000_000
     output_cost = output_tokens * prices['output'] / 1_000_000
     return input_cost + output_cost

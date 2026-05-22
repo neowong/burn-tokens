@@ -146,10 +146,9 @@
         }
 
         function onProviderChange() {
-            // Reset model list when switching provider
             const p = document.getElementById('provider').value;
             document.getElementById('model').innerHTML = p === 'deepseek'
-                ? '<option value="deepseek-chat">DeepSeek-V3</option><option value="deepseek-reasoner">DeepSeek-R1</option>'
+                ? '<option value="deepseek-v4-flash">DeepSeek-V4 Flash (¥1-2/百万token)</option><option value="deepseek-v4-pro">DeepSeek-V4 Pro (¥3-6/百万token)</option>'
                 : '<option value="qwen-max">Qwen-Max (¥20-60/百万token)</option><option value="qwen-plus">Qwen-Plus (¥2-6/百万token)</option><option value="qwen-turbo">Qwen-Turbo (¥0.8-2/百万token)</option>';
         }
 
