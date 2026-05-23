@@ -1,0 +1,12 @@
+services:
+  burner:
+    build: .
+    container_name: token-burner
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Asia/Shanghai
+      - DB_PATH=/data/burner.db

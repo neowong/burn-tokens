@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -9,7 +10,7 @@ import requests
 
 app = Flask(__name__)
 
-DB_PATH = 'burner.db'
+DB_PATH = os.environ.get('DB_PATH', 'burner.db')
 
 # In-memory state
 state = {
@@ -463,4 +464,4 @@ def get_history():
 if __name__ == '__main__':
     init_db()
     load_config()
-    app.run(debug=False, host='127.0.0.1', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
